@@ -15,3 +15,15 @@ dist/
 coverage/
 .next/
 *.tsbuildinfo
+
+# TypeScript build cache
+**/*.tsbuildinfo
+
+# Generated Prisma Client
+apps/api/src/generated/prisma/
+
+# Prisma-generated AI tooling files
+apps/api/.agents/
+apps/api/.claude/
+apps/api/.windsurf/
+apps/api/skills-lock.json
