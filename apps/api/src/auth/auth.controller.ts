@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
+import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 
 import { AuthService } from './auth.service';
@@ -24,12 +25,24 @@ export class AuthController {
   ) {}
 
   @Post('register')
+  @Throttle({
+    default: {
+      limit: 3,
+      ttl: 60_000,
+    },
+  })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({
+    default: {
+      limit: 5,
+      ttl: 60_000,
+    },
+  })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
