@@ -1,114 +1,141 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Resonance API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+NestJS, TypeScript, Prisma, and PostgreSQL backend for Resonance. Run the commands
+below from `apps/api` unless stated otherwise.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Local setup
 
-## Description
+1. Install Node.js 24.15 or later in the 24.x line and start PostgreSQL. Create an
+   empty database named `resonance` with a user that can apply migrations.
+2. Install the locked dependencies and copy the environment template:
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+   ```powershell
+   npm ci
+   Copy-Item .env.example .env
+   ```
 
-## Project setup
+3. Edit `.env` with your database URL and Spotify app credentials. Generate two
+   separate random values with the command below: use one as `JWT_ACCESS_SECRET`
+   and the other as `SPOTIFY_TOKEN_ENCRYPTION_KEY`.
 
-```bash
-$ npm install
+   ```powershell
+   node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+   ```
+
+   | Variable                       | Purpose                                                                       |
+   | ------------------------------ | ----------------------------------------------------------------------------- |
+   | `DATABASE_URL`                 | PostgreSQL connection URL, including username, password, and database         |
+   | `JWT_ACCESS_SECRET`            | JWT signing secret, at least 32 bytes; tokens expire after 15 minutes         |
+   | `SPOTIFY_CLIENT_ID`            | Client ID from your Spotify developer app                                     |
+   | `SPOTIFY_CLIENT_SECRET`        | Client secret from the same app                                               |
+   | `SPOTIFY_REDIRECT_URI`         | Registered callback URL; locally use `http://127.0.0.1:4000/spotify/callback` |
+   | `SPOTIFY_TOKEN_ENCRYPTION_KEY` | Exactly 64 hexadecimal characters for AES-256-GCM token encryption            |
+   | `NODE_ENV`                     | `development` enables the manual Spotify test page                            |
+   | `PORT`                         | HTTP port; defaults to `4000`                                                 |
+
+   Keep `.env` private. Keep the encryption key stable: saved Spotify tokens
+   require the same key to decrypt. Changing it requires users to reconnect.
+
+4. Generate the Prisma client, apply the committed migrations, and start the API:
+
+   ```powershell
+   npm run prisma:generate
+   npm run db:migrate
+   npm run start:dev
+   ```
+
+   The Prisma scripts explicitly load `prisma7.config.ts`.
+
+5. Check `http://127.0.0.1:4000/` for `Hello World!` and
+   `http://127.0.0.1:4000/health/db` for database connectivity.
+
+## Spotify connection test
+
+Register the exact `SPOTIFY_REDIRECT_URI` in the settings of your
+[Spotify developer app](https://developer.spotify.com/dashboard). The API accepts
+HTTPS callbacks and HTTP loopback callbacks with the `/spotify/callback` path.
+For local use, open the API with `127.0.0.1` consistently so the OAuth state cookie
+reaches the callback.
+
+1. Create a Resonance account with `POST /auth/register`, then log in with
+   `POST /auth/login`. The registration response does not include an access token.
+
+   ```powershell
+   $registration = @{
+     username = 'listener'
+     email = 'listener@example.com'
+     password = 'ChooseYourOwnStrongPassword123!'
+     displayName = 'Listener'
+   } | ConvertTo-Json
+   Invoke-RestMethod -Method Post -Uri http://127.0.0.1:4000/auth/register `
+     -ContentType application/json -Body $registration
+   ```
+
+2. With `NODE_ENV=development`, open `http://127.0.0.1:4000/spotify/test` in your
+   browser. Log in with that account and click **Connect Spotify**.
+3. Approve Spotify access. The API requests `user-read-private` and
+   `user-top-read`. If Spotify denies access, check the app's current development
+   access settings and that the account has permission to use it.
+4. After the callback says **Spotify connected**, return to the test page and
+   click **Connection status**, then **Sync**. Choose `short_term`, `medium_term`,
+   or `long_term`; an omitted range defaults to `medium_term`.
+5. Click **Read saved profile** to retrieve persisted data without contacting
+   Spotify. **Disconnect and delete saved Spotify data** removes the local
+   connection, pending OAuth requests, and saved taste profiles. This endpoint
+   does not call Spotify to revoke consent.
+
+The test page keeps the Resonance JWT in memory. Log in again after a refresh or
+token expiry. Connect and sync allow three requests per minute per IP; login
+allows five, registration three, and the default limit is 60.
+
+## Routes
+
+Protected routes use `Authorization: Bearer <accessToken>` from `/auth/login`.
+The callback uses a one-use state value and an HTTP-only state cookie instead
+of a Resonance JWT.
+
+| Method   | Route                                  | Authentication           | Result                                                               |
+| -------- | -------------------------------------- | ------------------------ | -------------------------------------------------------------------- |
+| `POST`   | `/auth/register`                       | Public                   | Create an account                                                    |
+| `POST`   | `/auth/login`                          | Public                   | Receive an access token                                              |
+| `GET`    | `/auth/me`                             | JWT                      | Current user                                                         |
+| `POST`   | `/spotify/connect`                     | JWT                      | Authorization URL and state cookie                                   |
+| `GET`    | `/spotify/callback`                    | OAuth state + cookie     | Link the Spotify account                                             |
+| `GET`    | `/spotify/status`                      | JWT                      | Connection details and saved ranges                                  |
+| `POST`   | `/spotify/sync`                        | JWT                      | Fetch and save top items; JSON body `{ "timeRange": "medium_term" }` |
+| `GET`    | `/spotify/taste?timeRange=medium_term` | JWT                      | Read the saved profile                                               |
+| `DELETE` | `/spotify/disconnect`                  | JWT                      | Delete local Spotify data                                            |
+| `GET`    | `/spotify/test`                        | Public, development only | Manual connection test page                                          |
+
+Each sync stores up to 50 artists and 50 tracks for the chosen range, with rank,
+Spotify ID, name, image, and Spotify link. Tracks without an ID are skipped.
+Sync refreshes expiring tokens, deduplicates concurrent refreshes within one API
+process, and retries top-item requests once after a Spotify 401.
+
+If authorization was revoked, the API returns `SPOTIFY_RECONNECT_REQUIRED` and
+removes the stale local connection. Rate-limit responses include
+`retryAfterSeconds` when Spotify supplies a valid `Retry-After` value.
+
+## Checks and CI
+
+```powershell
+npm run lint
+npm test -- --runInBand
+npm run test:e2e -- --runInBand
+npm run build
 ```
 
-## Compile and run the project
+Generate the Prisma client before running checks on a fresh checkout. Tests use
+fixed test credentials and mocked Spotify/database providers. HTTP tests exercise
+JWT protection, callback cookies, DTO validation, route behavior, and throttling.
+They do not apply database migrations or verify real PostgreSQL transactions,
+unique constraints, cascades, or live Spotify consent. Use the manual flow above
+to verify the real integration.
 
-```bash
-# development
-$ npm run start
+The repository's GitHub Actions workflow installs with `npm ci`, generates
+Prisma, lints, runs unit and HTTP tests, and builds on Node.js 24. No repository
+secrets or live service accounts are needed for these checks.
 
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Observability
-
-In production applications, observability is essential for understanding how your system behaves, detecting issues early, and maintaining reliable performance.
-
-[NestJS Observe](https://observe.nestjs.com) automatically instruments your NestJS application, giving you deep visibility into your system with minimal setup:
-
-- **Distributed tracing:** Follow requests across services and understand how they flow through your system.
-- **Waterfall analysis:** Visualize request execution and identify slow operations, bottlenecks, and unexpected delays.
-- **Performance analysis:** Analyze application performance in real time and quickly pinpoint areas that need optimization.
-- **Metrics:** Track key application and infrastructure metrics to understand system health and performance trends.
-- **Logging:** Centralize and correlate logs with traces and other telemetry to make debugging easier.
-- **Error tracking:** Detect errors quickly and investigate their root causes with the surrounding context.
-- **SLA monitoring:** Track service-level objectives and identify when your application is approaching or exceeding defined thresholds.
-- **Alarms and alerts:** Set up alerts for critical errors, performance degradation, SLA violations, and other anomalies so your team can react quickly.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Auto-instrument your application with [NestJS Observer](https://observer.nestjs.com). Distributed tracing, metrics, and logging made easy. Error tracking and performance monitoring for your NestJS applications.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+For production, build with `npm run build`, apply migrations to the intended
+database, and run `npm run start:prod` with production environment variables and
+an HTTPS Spotify callback.
